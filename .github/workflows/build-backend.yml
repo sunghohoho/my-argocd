@@ -101,9 +101,8 @@ jobs:
         BACKEND_ECR_REPOSITORY: ${{ env.BACKEND_ECR_REPOSITORY }}
         IMAGE_TAG: ${{ env.TAG }}
       run: |
-        echo $BACKEND_ECR_REPOSITORY
-        echo $IMAGE_TAG
-        docker push $BACKEND_ECR_REPOSITORY:$IMAGE_TAG
+        docker push ${{ env.BACKEND_ECR_REPOSITORY }}:${{ env.TAG }}
+       # docker push $BACKEND_ECR_REPOSITORY:$IMAGE_TAG
 
     - name: Notice when job fails # 작업 실패 시 슬랙 알림
       if: always() # 항상 실행
