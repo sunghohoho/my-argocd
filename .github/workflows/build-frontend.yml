@@ -1,0 +1,119 @@
+# 워크플로우 이름
+name: "[FRONTEND] Build"
+on:
+  # 수동 실행
+  workflow_dispatch:
+    # 입력 값이 필요합니다. tag로 사용
+    inputs:
+      tag:
+        description: "`x.y.z-front.NN` 형태로 버전을 입력해주세요. (ex. 0.1.0-front.05)"
+        required: true
+        default: 0.0.1-front.00
+        
+# 워크플로우에서 사용할 환경 변수 지정, 위에서 지정한 TAG값, 슬랙 웹훅, ecr 리포, 빌드 경로 등
+env:
+  TAG: ${{ github.event.inputs.tag }}
+  SLACK_WEBHOOK_URL: ${{secrets.SLACK_WEBHOOK_URL}}
+  FRONTEND_ECR_REPOSITORY: ${{ secrets.FRONTEND_ECR_REPOSITORY }}
+  BUILD_PATH: "~/humancat-frontend-build-tmp"
+
+# git repo에 대한 write 및 aws oidc 토큰 발급을 위한 write 권한 부여
+permissions:
+  id-token: write
+  contents: write
+
+jobs:
+  # 태그가 유효한지 체크
+  condition_check:
+    runs-on: ubuntu-latest
+    steps:
+    - name: check tag format
+      run: |
+        if [[ !(${{ env.TAG }} =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\-front\.[0-9]{2}$) ]];
+        then
+          echo "You entered an incorrect tag format."
+          exit 1
+        fi
+        
+    # 해당 잡이 스텝이 유효하지 않은 경우 슬랙으로 전달    
+    - name: notice when job fails
+      if: failure()
+      uses: 8398a7/action-slack@v3.2.0
+      with:
+        status: ${{job.status}}
+        fields: repo,workflow,job
+        author_name: Github Action Slack
+        
+  # 1번 잡 완료 후 실행을 위한 needs 설정, git에 tag 지정
+  tagging:
+    needs: condition_check
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    # 태그 생성 후 지정
+    - name: Create Tag
+      run: |
+        git tag ${{ env.TAG }}
+        git push origin ${{ env.TAG }}
+    # 실패하면 슬랙    
+    - name: notice when job fails
+      if: failure()
+      uses: 8398a7/action-slack@v3.2.0
+      with:
+        status: ${{job.status}}
+        fields: repo,workflow,job
+        author_name: Github Action Slack
+
+  # 빌드 잡      
+  build:
+    needs: tagging
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v3
+
+    # 파이썬 코드 빌드를 위한 코드 옮기기 및 build 디렉터리의 모든 내용을 custom 빌드 패스로 보냄  
+    - name: Move Python Sample code
+      run: |
+        mkdir -p $BUILD_PATH
+        cp -rf source/humancat-frontend/* $BUILD_PATH/
+        cp -rf build/humancat-frontend/* $BUILD_PATH/
+
+    # AWS 인증
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        role-to-assume: ${{ secrets.ASSUME_ROLE_ARN }}
+        aws-region: ap-northeast-2
+        role-session-name: GithubActionSession
+
+    # docker 이미지에 태깅 지정
+    - id: build-image
+      name: Build and Tag Image
+      env:
+        FRONTEND_ECR_REPOSITORY: ${{ env.FRONTEND_ECR_REPOSITORY }}
+        IMAGE_TAG: ${{ env.TAG }}
+      run: |
+        docker build -t $FRONTEND_ECR_REPOSITORY:$IMAGE_TAG $BUILD_PATH/
+
+    # ecr 로그인
+    - id: login-ecr
+      name: Login to Amazon ECR
+      uses: aws-actions/amazon-ecr-login@v1
+
+    # ecr에 업로드
+    - id: push-image-to-aws-ecr
+      name: Push image to Amazon ECR
+      env:
+        FRONTEND_ECR_REPOSITORY: ${{ env.FRONTEND_ECR_REPOSITORY }}
+        IMAGE_TAG: ${{ env.TAG }}
+      run: |
+        docker push $FRONTEND_ECR_REPOSITORY:$IMAGE_TAG
+    - name: Notice when job fails
+      if: always()
+      uses: 8398a7/action-slack@v3.2.0
+      with:
+        status: ${{job.status}}
+        fields: repo,workflow,job
+        author_name: Github Action Slack
