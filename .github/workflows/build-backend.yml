@@ -80,7 +80,7 @@ jobs:
       uses: aws-actions/configure-aws-credentials@v1
       with:
         role-to-assume: ${{ secrets.ASSUME_ROLE_ARN }} # 시크릿에서 역할 ARN 가져오기
-        aws-region: ap-northeast-2 # AWS 리전 설정
+        aws-region: ap-southeast-2 # AWS 리전 설정
         role-session-name: GithubActionSession # 역할 세션 이름 설정
 
     - id: build-image # 도커 이미지 빌드 및 태그
