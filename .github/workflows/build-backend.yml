@@ -1,0 +1,112 @@
+# 이 워크플로우의 이름입니다.
+name: "[BACKEND] Build"
+
+# 워크플로우를 수동으로 실행할 수 있도록 설정합니다.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "`x.y.z-backend.NN` 형태로 버전을 입력해주세요. (ex. 0.1.0-backend.05)"
+        required: true
+        default: 0.0.1-backend.00
+
+# 환경 변수 설정
+env:
+  TAG: ${{ github.event.inputs.tag }} # 사용자가 입력한 태그를 환경 변수로 설정합니다.
+  SLACK_WEBHOOK_URL: ${{secrets.SLACK_WEBHOOK_URL}} # 슬랙 웹훅 URL을 시크릿에서 가져옵니다.
+  BACKEND_ECR_REPOSITORY: ${{ secrets.BACKEND_ECR_REPOSITORY }} # ECR 리포지토리 URL을 시크릿에서 가져옵니다.
+  BUILD_PATH: "~/humancat-backend-build-tmp" # 빌드에 사용할 임시 디렉토리 경로입니다.
+
+# 워크플로우 실행에 필요한 권한 설정
+permissions:
+  id-token: write
+  contents: write
+
+# 각 작업(job) 정의
+jobs:
+  # 첫 번째 작업: 조건 확인
+  condition_check:
+    runs-on: ubuntu-latest # 최신 우분투 이미지를 사용합니다.
+    steps:
+    - name: check tag format # 태그 형식 확인
+      run: |
+        if [[ !(${{ env.TAG }} =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\-backend\.[0-9]{2}$) ]]; then
+          echo "You entered an incorrect tag format."
+          exit 1
+        fi
+
+    - name: notice when job fails # 작업 실패 시 슬랙 알림
+      if: failure() # 조건이 실패일 때 실행
+      uses: 8398a7/action-slack@v3.2.0 # 슬랙 알림 액션 사용
+      with:
+        status: ${{job.status}}
+        fields: repo,workflow,job
+        author_name: Github Action Slack
+
+  # 두 번째 작업: 태그 생성
+  tagging:
+    needs: condition_check # 조건 확인 작업이 성공적으로 완료되어야만 실행됩니다.
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2 # 저장소 체크아웃
+    - name: Create Tag # 태그 생성
+      run: |
+        git tag ${{ env.TAG }}
+        git push origin ${{ env.TAG }}
+
+    - name: notice when job fails # 작업 실패 시 슬랙 알림
+      if: failure() # 조건이 실패일 때 실행
+      uses: 8398a7/action-slack@v3.2.0 # 슬랙 알림 액션 사용
+      with:
+        status: ${{job.status}}
+        fields: repo,workflow,job
+        author_name: Github Action Slack
+
+  # 세 번째 작업: 빌드
+  build:
+    needs: tagging # 태그 생성 작업이 성공적으로 완료되어야만 실행됩니다.
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code # 코드 체크아웃
+      uses: actions/checkout@v3
+
+    - name: Move Python Sample code # 파이썬 샘플 코드 이동
+      run: |
+        mkdir -p $BUILD_PATH # 빌드 경로 생성
+        cp -rf source/humancat-backend/* $BUILD_PATH/ # 소스 코드 복사
+        cp -rf build/humancat-backend/* $BUILD_PATH/ # 빌드 결과물 복사
+
+    - name: Configure AWS credentials # AWS 자격 증명 구성
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        role-to-assume: ${{ secrets.ASSUME_ROLE_ARN }} # 시크릿에서 역할 ARN 가져오기
+        aws-region: ap-northeast-2 # AWS 리전 설정
+        role-session-name: GithubActionSession # 역할 세션 이름 설정
+
+    - id: build-image # 도커 이미지 빌드 및 태그
+      name: Build and Tag Image
+      env:
+        BACKEND_ECR_REPOSITORY: ${{ env.BACKEND_ECR_REPOSITORY }}
+        IMAGE_TAG: ${{ env.TAG }}
+      run: |
+        docker build -t $BACKEND_ECR_REPOSITORY:$IMAGE_TAG $BUILD_PATH/
+
+    - id: login-ecr # ECR 로그인
+      name: Login to Amazon ECR
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - id: push-image-to-aws-ecr # 도커 이미지를 ECR에 푸시
+      name: Push image to Amazon ECR
+      env:
+        BACKEND_ECR_REPOSITORY: ${{ env.BACKEND_ECR_REPOSITORY }}
+        IMAGE_TAG: ${{ env.TAG }}
+      run: |
+        docker push $BACKEND_ECR_REPOSITORY:$IMAGE_TAG
+
+    - name: Notice when job fails # 작업 실패 시 슬랙 알림
+      if: always() # 항상 실행
+      uses: 8398a7/action-slack@v3.2.0
+      with:
+        status: ${{job.status}}
+        fields: repo,workflow,job
+        author_name: Github Action Slack
