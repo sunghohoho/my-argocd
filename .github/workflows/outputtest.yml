@@ -1,23 +1,24 @@
 name: outputtest
 on: workflow_dispatch
 jobs:
-	versioning:
-		runs-on: ubuntu-latest
-		outputs:
-			tag: ${{ steps.def_tag.outputs.tag }}
+	versioningdate:
+	  runs-on: ubuntu-latest
+	  outputs:
+	    tag: ${{ steps.version_step.outputs.tag }}
 		steps:
+	    - uses: actions/checkout@v2
 			- id: def_tag
 				run: |
-				  sudo ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime
-				  echo "tag=$(date +'%Y%m%d.%H%M%S')" >> "$GITHUB_OUTPUT"
-			
+					sudo ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime
+					echo "tag=$(date +'%Y%m%d.%H%M%S')" >> "$GITHUB_OUTPUT"
+				
 			- name: check tag value
 				run: |
-					echo ${{ steps.def_tag.outputs.tag}}
-					
+				echo ${{ steps.def_tag.outputs.tag}}
+						
 		verify:
 			runs-on: ubunutu:latest
 			steps:
 				- name: call
 					run: |
-						echo "value is ${{ needs.versioning.outputs.tag }}"			
+						echo "value is ${{ needs.versioningdate.outputs.tag }}"			
