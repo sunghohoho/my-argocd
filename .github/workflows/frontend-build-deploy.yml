@@ -2,7 +2,7 @@ name: "[FRONTEND] Build & Deploy"
 on:
   push:
     branches:
-      - master
+      - main
     paths:
       - 'source/humancat-frontend/**'
   workflow_dispatch:
