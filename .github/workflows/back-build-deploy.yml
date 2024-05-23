@@ -67,7 +67,7 @@ jobs:
       uses: aws-actions/configure-aws-credentials@v1
       with:
         role-to-assume: ${{ secrets.ASSUME_ROLE_ARN }}
-        aws-region: ap-northeast-2
+        aws-region: ap-southeast-2
         role-session-name: GithubActionSession
     - id: build-image
       name: Build and Tag Image
