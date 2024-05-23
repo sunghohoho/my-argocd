@@ -5,6 +5,7 @@ on:
       - main
     paths:
       - 'source/humancat-frontend/**'
+      - 'deploy/gitops/frontend/**'
   workflow_dispatch:
 env:
   TAG: ${{ github.event.inputs.tag }}
