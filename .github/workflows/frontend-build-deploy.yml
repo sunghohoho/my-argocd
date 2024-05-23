@@ -1,0 +1,95 @@
+name: "[FRONTEND] Build & Deploy"
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'source/humancat-frontend/**'
+  workflow_dispatch:
+env:
+  TAG: ${{ github.event.inputs.tag }}
+  SLACK_WEBHOOK_URL: ${{secrets.SLACK_WEBHOOK_URL}}
+  FRONTEND_ECR_REPOSITORY: ${{ secrets.FRONTEND_ECR_REPOSITORY }}
+  BUILD_PATH: "~/humancat-frontend-build-tmp"
+
+permissions:
+  id-token: write
+  contents: write
+  
+jobs:
+  versioning:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version_step.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v2
+      - id: version_step
+        name: set version with current date
+        run: |
+          sudo ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime
+          echo "tag=$(date +'%Y%m%d.%H%M%S')" >> "$GITHUB_OUTPUT"
+  build:
+    needs: versioning
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_TAG: ${{ needs.versioning.outputs.tag }}
+    outputs:
+      tag: ${{ needs.versioning.outputs.tag }}
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v3
+    - name: Move Python Sample code
+      run: |
+        mkdir -p $BUILD_PATH
+        cp -rf source/humancat-frontend/* $BUILD_PATH/
+        cp -rf build/humancat-frontend/* $BUILD_PATH/
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        role-to-assume: ${{ secrets.ASSUME_ROLE_ARN }}
+        aws-region: ap-southeast-2
+        role-session-name: GithubActionSession
+    - id: build-image
+      name: Build and Tag Image
+      run: |
+        docker build -t $FRONTEND_ECR_REPOSITORY:$IMAGE_TAG $BUILD_PATH/
+    - id: login-ecr
+      name: Login to Amazon ECR
+      uses: aws-actions/amazon-ecr-login@v1
+    - id: push-image-to-aws-ecr
+      name: Push image to Amazon ECR
+      run: |
+        docker push $FRONTEND_ECR_REPOSITORY:$IMAGE_TAG
+    - name: Notice when job fails
+      if: always()
+      uses: 8398a7/action-slack@v3.2.0
+      with:
+        status: ${{job.status}}
+        fields: repo,workflow,job
+        author_name: Github Action Slack
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Setup Kustomize
+      uses: imranismail/setup-kustomize@v1
+    - name: Checkout kustomize repository
+      uses: actions/checkout@v3
+    - name: Update Kubernetes resources
+      run: |
+        cd deploy/gitops/frontend/gitops
+        kustomize edit set image humancat-frontend-image=${{ env.FRONTEND_ECR_REPOSITORY }}:${{ needs.build.outputs.tag }}
+    - name: Commit & Push Image 
+      uses: actions-js/push@master
+      with:
+        message: '[DEPLOY] Update Image ${{ env.FRONTEND_ECR_REPOSITORY }}:${{ needs.build.outputs.tag }}'
+        branch: main
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+    - name: Notice when job success
+      if: success()
+      uses: 8398a7/action-slack@v3.2.0
+      with:
+        status: ${{job.status}}
+        fields: repo,workflow,job
+        author_name: Success to Deploy on Kubernetes (${{ env.FRONTEND_ECR_REPOSITORY }}:${{ needs.build.outputs.tag }}
+        color: good
