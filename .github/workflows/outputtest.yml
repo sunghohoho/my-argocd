@@ -26,10 +26,10 @@
 name: outputtest
 on: workflow_dispatch
 jobs:
-  versioningdate:
+  versioning:
     runs-on: ubuntu-latest
     outputs:
-      tag: ${{ steps.def_tag.outputs.tag }}
+      tags: ${{ steps.def_tag.outputs.tag }}
     steps:
       - uses: actions/checkout@v2
       - id: def_tag
@@ -41,8 +41,8 @@ jobs:
           echo ${{ steps.def_tag.outputs.tag }}
   verify:
     runs-on: ubuntu-latest
-    needs: versioningdate
+    needs: versioning
     steps:
       - name: call
         run: |
-          echo "value is ${{ needs.versioningdate.outputs.tag }}"
+          echo "value is ${{ needs.versioning.outputs.tags }}"
