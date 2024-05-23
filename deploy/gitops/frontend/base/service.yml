@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: humancat-frontend-svc
+spec:
+  type: ClusterIP
+  selector:
+    app: humancat-frontend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+      name: api-port

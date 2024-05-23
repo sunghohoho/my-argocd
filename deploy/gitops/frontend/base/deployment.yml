@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: humancat-frontend
+spec:
+  selector:
+    matchLabels:
+      app: humancat-frontend
+  template:
+    metadata:
+      name: humancat-frontend
+      labels:
+        app: humancat-frontend
+    spec:
+      containers:
+        - name: humancat-frontend
+          image: humancat-frontend-image
+          envFrom:
+            - configMapRef:
+                name: backend-conf

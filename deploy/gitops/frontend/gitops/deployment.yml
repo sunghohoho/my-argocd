@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: humancat-frontend
+spec:
+  replicas: 2
+  template:
+    spec:
+      containers:
+        - name: humancat-frontend
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "300m"
+              memory: "512Mi"

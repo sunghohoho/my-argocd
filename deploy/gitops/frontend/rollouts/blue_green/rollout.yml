@@ -1,0 +1,28 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: humancat-frontend-rollout-blue-green
+  
+spec:
+  replicas: 2
+  strategy:
+    blueGreen:
+      activeService: humancat-frontend-active-svc
+      previewService: humancat-frontend-preview-svc
+      autoPromotionEnabled: false
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: humancat-frontend-rollout-blue-green
+  template:
+    metadata:
+      labels:
+        app: humancat-frontend-rollout-blue-green
+    spec:
+      containers:
+        - name: humancat-frontend-rollout-blue-green
+          image: humancat-frontend-rollout-blue-green-image
+          envFrom:
+            - configMapRef:
+                name: backend-conf
+     

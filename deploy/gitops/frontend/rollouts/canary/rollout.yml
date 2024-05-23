@@ -1,0 +1,31 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: humancat-frontend-canary-rollout
+spec:
+  replicas: 5
+  strategy:
+    canary:
+      steps:
+      - setWeight: 10
+      - pause: {}
+      - setWeight: 40
+      - pause: {}
+      - setWeight: 80
+      - pause: {}
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: humancat-frontend-canary-rollout
+  template:
+    metadata:
+      labels:
+        app: humancat-frontend-canary-rollout
+    spec:
+      containers:
+        - name: humancat-frontend-canary-rollout
+          image: humancat-frontend-canary-rollout-image
+          envFrom:
+            - configMapRef:
+                name: backend-conf
+     
