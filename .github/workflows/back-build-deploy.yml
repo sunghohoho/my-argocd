@@ -1,0 +1,126 @@
+name: "[BACKEND] Build & Deploy"
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "`x.y.z-backend.NN` 형태로 버전을 입력해주세요. (ex. 0.1.0-backend.05)"
+        required: true
+        default: 0.0.1-backend.00
+env:
+  TAG: ${{ github.event.inputs.tag }}
+  SLACK_WEBHOOK_URL: ${{secrets.SLACK_WEBHOOK_URL}}
+  BACKEND_ECR_REPOSITORY: ${{ secrets.BACKEND_ECR_REPOSITORY }}
+  BUILD_PATH: "~/humancat-backend-build-tmp"
+
+permissions:
+  id-token: write
+  contents: write
+  
+jobs:
+  condition_check:
+    runs-on: ubuntu-latest
+    steps:
+    - name: check tag format
+      run: |
+        if [[ !(${{ env.TAG }} =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\-backend\.[0-9]{2}$) ]];
+        then
+          echo "You entered an incorrect tag format."
+          exit 1
+        fi
+    - name: notice when job fails
+      if: failure()
+      uses: 8398a7/action-slack@v3.2.0
+      with:
+        status: ${{job.status}}
+        fields: repo,workflow,job
+        author_name: Github Action Slack
+        
+  tagging:
+    needs: condition_check
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Create Tag
+      run: |
+        git tag ${{ env.TAG }}
+        git push origin ${{ env.TAG }}
+    - name: notice when job fails
+      if: failure()
+      uses: 8398a7/action-slack@v3.2.0
+      with:
+        status: ${{job.status}}
+        fields: repo,workflow,job
+        author_name: Github Action Slack
+        
+  build:
+    needs: tagging
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v3
+    - name: Move Python Sample code
+      run: |
+        mkdir -p $BUILD_PATH
+        cp -rf source/humancat-backend/* $BUILD_PATH/
+        cp -rf build/humancat-backend/* $BUILD_PATH/
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        role-to-assume: ${{ secrets.ASSUME_ROLE_ARN }}
+        aws-region: ap-northeast-2
+        role-session-name: GithubActionSession
+    - id: build-image
+      name: Build and Tag Image
+      env:
+        BACKEND_ECR_REPOSITORY: ${{ env.BACKEND_ECR_REPOSITORY }}
+        IMAGE_TAG: ${{ env.TAG }}
+      run: |
+        docker build -t $BACKEND_ECR_REPOSITORY:$IMAGE_TAG $BUILD_PATH/
+    - id: login-ecr
+      name: Login to Amazon ECR
+      uses: aws-actions/amazon-ecr-login@v1
+    - id: push-image-to-aws-ecr
+      name: Push image to Amazon ECR
+      env:
+        BACKEND_ECR_REPOSITORY: ${{ env.BACKEND_ECR_REPOSITORY }}
+        IMAGE_TAG: ${{ env.TAG }}
+      run: |
+        docker push $BACKEND_ECR_REPOSITORY:$IMAGE_TAG
+    - name: Notice when job fails
+      if: always()
+      uses: 8398a7/action-slack@v3.2.0
+      with:
+        status: ${{job.status}}
+        fields: repo,workflow,job
+        author_name: Github Action Slack
+        
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    # 커스터마이징 설정, 컨테이너 이미지 정보를 바꾸기 위한 설정
+    - name: Setup Kustomize
+      uses: imranismail/setup-kustomize@v1
+    - name: Checkout kustomize repository
+      uses: actions/checkout@v3
+    # 쿠버네티스 커스터마이징 설정을 edit으로 변경
+    - name: Update Kubernetes resources
+      run: |
+        cd deploy/gitops/backend/gitops
+        kustomize edit set image humancat-backend-image=${{ env.BACKEND_ECR_REPOSITORY }}:${{ env.TAG }}
+    # 이미지 커밋, 푸시
+    - name: Commit & Push Image 
+      uses: actions-js/push@master
+      with:
+        message: '[DEPLOY] Update Image ${{ env.BACKEND_ECR_REPOSITORY }}:${{ env.TAG }}'
+        branch: master
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+    # 슬랙
+    - name: Notice when job success
+      if: success()
+      uses: 8398a7/action-slack@v3.2.0
+      with:
+        status: ${{job.status}}
+        fields: repo,workflow,job
+        author_name: Success to Deploy on Kubernetes (${{ env.BACKEND_ECR_REPOSITORY }}:${{ env.TAG }})
+        color: good
