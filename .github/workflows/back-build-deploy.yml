@@ -113,7 +113,7 @@ jobs:
       uses: actions-js/push@master
       with:
         message: '[DEPLOY] Update Image ${{ env.BACKEND_ECR_REPOSITORY }}:${{ env.TAG }}'
-        branch: master
+        branch: main
         github_token: ${{ secrets.GITHUB_TOKEN }}
     # 슬랙
     - name: Notice when job success
