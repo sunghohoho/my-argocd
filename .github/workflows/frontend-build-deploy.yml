@@ -17,8 +17,10 @@ permissions:
   contents: write
   
 jobs:
+  # 현재 시간을 태그로 지정하는 잡
   versioning:
     runs-on: ubuntu-latest
+    # 다른 잡에서 사용하기 위해 outputs로 지정, 호출 시 ${{ needs.versioning.outputs.tag }}, 같은 job에서 호출하는 경우 ${{ steps.version_step.outputs.tag }}
     outputs:
       tag: ${{ steps.version_step.outputs.tag }}
     steps:
@@ -27,7 +29,9 @@ jobs:
         name: set version with current date
         run: |
           sudo ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime
+          # Tag 지정
           echo "tag=$(date +'%Y%m%d.%H%M%S')" >> "$GITHUB_OUTPUT"
+          
   build:
     needs: versioning
     runs-on: ubuntu-latest
@@ -67,24 +71,31 @@ jobs:
         status: ${{job.status}}
         fields: repo,workflow,job
         author_name: Github Action Slack
+        
   deploy:
     needs: build
     runs-on: ubuntu-latest
     steps:
+    # 러너 내부에 커스터마이즈 설정
     - name: Setup Kustomize
       uses: imranismail/setup-kustomize@v1
     - name: Checkout kustomize repository
       uses: actions/checkout@v3
+      
+    # 작성되어 있는 kustomize의 이미지를 변경합니다. frontend 이미지:versioning tag로 변경
     - name: Update Kubernetes resources
       run: |
         cd deploy/gitops/frontend/gitops
         kustomize edit set image humancat-frontend-image=${{ env.FRONTEND_ECR_REPOSITORY }}:${{ needs.build.outputs.tag }}
+        
+    # github 리포 로컬 변경 사항을 커밋하고 푸시하는 작업, 위의 작업에서 변경한 kustomize의 내용을 실제 repo에 반영하는 작업    
     - name: Commit & Push Image 
       uses: actions-js/push@master
       with:
         message: '[DEPLOY] Update Image ${{ env.FRONTEND_ECR_REPOSITORY }}:${{ needs.build.outputs.tag }}'
         branch: main
         github_token: ${{ secrets.GITHUB_TOKEN }}
+        
     - name: Notice when job success
       if: success()
       uses: 8398a7/action-slack@v3.2.0
