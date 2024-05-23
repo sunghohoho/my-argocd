@@ -7,5 +7,5 @@ resources:
 images:
 - name: humancat-backend-image
   newName: 866477832211.dkr.ecr.ap-southeast-2.amazonaws.com/humancat-backend
-  newTag: 0.0.1-backend.07
+  newTag: 0.0.1-backend.10
 namespace: gitops
