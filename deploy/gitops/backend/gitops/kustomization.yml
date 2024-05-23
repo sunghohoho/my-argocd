@@ -6,6 +6,6 @@ resources:
 - ../base
 images:
 - name: humancat-backend-image
-  newName: <ECR레포지토리>
-  newTag: <이미지태그>
+  newName: 866477832211.dkr.ecr.ap-southeast-2.amazonaws.com/humancat-backend
+  newTag: 0.0.1-backend.07
 namespace: gitops
